@@ -1,0 +1,6 @@
+# Optional components not required by the Streamlit Community Cloud app path.
+# These may install Pydantic transitively.
+langgraph>=0.6.0
+qdrant-client>=1.12.1
+sentence-transformers>=3.3.1
+langsmith>=0.2.11

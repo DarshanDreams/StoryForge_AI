@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from threading import Lock
 
 
 class RunStore:
@@ -9,11 +10,14 @@ class RunStore:
 
     def __init__(self, path: str | Path = "evaluation/experiment_runs.jsonl"):
         self.path = Path(path)
+        self._append_lock = Lock()
 
     def append(self, record: dict) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(record, ensure_ascii=True) + "\n")
+        serialized = json.dumps(record, ensure_ascii=True) + "\n"
+        with self._append_lock:
+            with self.path.open("a", encoding="utf-8") as handle:
+                handle.write(serialized)
 
     def recent(self, limit: int = 20) -> list[dict]:
         if not self.path.exists():

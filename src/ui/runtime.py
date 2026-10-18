@@ -31,9 +31,10 @@ def parser():
     return DocumentParser()
 
 
-@st.cache_resource
 def retriever():
-    return create_retriever()
+    if st.session_state.get("_retriever") is None:
+        st.session_state["_retriever"] = create_retriever()
+    return st.session_state["_retriever"]
 
 
 @st.cache_resource
@@ -41,18 +42,22 @@ def analyzer():
     return StoryAnalyzer(llm())
 
 
-@st.cache_resource
 def agent():
-    return StoryAgent(
-        llm=llm(),
-        retriever=retriever(),
-        retrieval_top_k=settings().retrieval_top_k,
-    )
+    if st.session_state.get("_agent") is None:
+        st.session_state["_agent"] = StoryAgent(
+            llm=llm(),
+            retriever=retriever(),
+            retrieval_top_k=settings().retrieval_top_k,
+        )
+    return st.session_state["_agent"]
 
 
-@st.cache_resource
 def creative_service():
-    return CreativeStoryService(llm(), retriever(), RunStore())
+    if st.session_state.get("_creative_service") is None:
+        st.session_state["_creative_service"] = CreativeStoryService(
+            llm(), retriever(), RunStore()
+        )
+    return st.session_state["_creative_service"]
 
 
 SESSION_DEFAULTS = {

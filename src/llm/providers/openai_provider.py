@@ -1,44 +1,41 @@
-from typing import Any, TypeVar
-
-from pydantic import BaseModel, Field
-
-
-T = TypeVar("T", bound=BaseModel)
+from dataclasses import dataclass, field
+from typing import Any
 
 
-class LLMMessage(BaseModel):
+
+@dataclass
+class LLMMessage:
     """A single message sent to an LLM."""
 
     role: str
     content: str
 
 
-class LLMRequest(BaseModel):
+@dataclass
+class LLMRequest:
     """Provider-independent LLM request."""
 
     messages: list[LLMMessage]
 
     model: str | None = None
 
-    temperature: float = Field(
-        default=0.7,
-        ge=0.0,
-        le=2.0,
-    )
+    temperature: float = 0.7
 
-    max_tokens: int | None = Field(
-        default=None,
-        gt=0,
-    )
+    max_tokens: int | None = None
 
-    response_format: type[BaseModel] | None = None
+    response_format: type | None = None
 
-    metadata: dict[str, Any] = Field(
-        default_factory=dict,
-    )
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not 0 <= self.temperature <= 2:
+            raise ValueError("temperature must be between 0 and 2.")
+        if self.max_tokens is not None and self.max_tokens <= 0:
+            raise ValueError("max_tokens must be greater than zero.")
 
 
-class LLMUsage(BaseModel):
+@dataclass
+class LLMUsage:
     """Token usage returned by the provider."""
 
     input_tokens: int = 0
@@ -48,25 +45,22 @@ class LLMUsage(BaseModel):
     total_tokens: int = 0
 
 
-class LLMResponse(BaseModel):
+@dataclass
+class LLMResponse:
     """Normalized response returned by the LLM Gateway."""
 
     content: str
-
-    parsed_output: Any = None
 
     model: str
 
     provider: str
 
-    usage: LLMUsage = Field(
-        default_factory=LLMUsage,
-    )
+    parsed_output: Any = None
+
+    usage: LLMUsage = field(default_factory=LLMUsage)
 
     latency_ms: float = 0.0
 
     estimated_cost: float = 0.0
 
-    metadata: dict[str, Any] = Field(
-        default_factory=dict,
-    )
+    metadata: dict[str, Any] = field(default_factory=dict)

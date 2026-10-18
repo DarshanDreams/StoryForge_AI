@@ -86,6 +86,6 @@ class StoryAnalyzer:
                 .strip()
             )
 
-        return StoryAnalysis.model_validate_json(
+        return StoryAnalysis.from_json(
             cleaned
         )

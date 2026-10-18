@@ -1,3 +1,4 @@
+from threading import Barrier
 from types import SimpleNamespace
 
 from src.observability.run_store import RunStore
@@ -7,7 +8,7 @@ from src.services.creative_story_service import CreativeStoryService
 class FakeLLM:
     model = "test-model"
 
-    def generate(self, system_prompt, user_prompt):
+    def generate(self, system_prompt, user_prompt, max_tokens=None):
         return "Generated creative output."
 
 
@@ -42,3 +43,40 @@ def test_creative_action_persists_trace(tmp_path):
     assert result["retrieved_chunks"] == 1
     assert result["output"] == "Generated creative output."
     assert store.recent()[0]["run_id"] == result["run_id"]
+
+
+def test_full_pipeline_runs_independent_reviews_concurrently(tmp_path):
+    barrier = Barrier(2)
+
+    class ConcurrentLLM(FakeLLM):
+        def generate(self, system_prompt, user_prompt, max_tokens=None):
+            if (
+                "Audit the proposed material" in user_prompt
+                or "Critique the proposed material" in user_prompt
+            ):
+                barrier.wait(timeout=2)
+            return "Generated creative output."
+
+    service = CreativeStoryService(
+        ConcurrentLLM(),
+        FakeRetriever(),
+        RunStore(tmp_path / "runs.jsonl"),
+    )
+    stages = []
+
+    pipeline = service.run_pipeline(
+        "Plan Mara's next episode.",
+        story_id="story-1",
+        on_stage=stages.append,
+    )
+
+    assert set(pipeline["steps"]) == {
+        "plan",
+        "scenes",
+        "dialogue",
+        "continuity",
+        "critique",
+        "rewrite",
+        "video_prompt",
+    }
+    assert "Checking continuity and screenplay quality in parallel" in stages

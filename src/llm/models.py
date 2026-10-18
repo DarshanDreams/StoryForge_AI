@@ -1,53 +1,49 @@
+from dataclasses import dataclass, field
 from typing import Any
 
-from pydantic import BaseModel, Field
 
-
-class LLMMessage(BaseModel):
+@dataclass
+class LLMMessage:
     role: str
     content: str
 
 
-class LLMRequest(BaseModel):
+@dataclass
+class LLMRequest:
     messages: list[LLMMessage]
 
     model: str | None = None
 
-    temperature: float = Field(
-        0.2,
-        ge=0,
-        le=2,
-    )
+    temperature: float = 0.2
 
-    max_tokens: int | None = Field(
-        None,
-        gt=0,
-    )
+    max_tokens: int | None = None
 
-    metadata: dict[str, Any] = Field(
-        default_factory=dict
-    )
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not 0 <= self.temperature <= 2:
+            raise ValueError("temperature must be between 0 and 2.")
+        if self.max_tokens is not None and self.max_tokens <= 0:
+            raise ValueError("max_tokens must be greater than zero.")
 
 
-class LLMUsage(BaseModel):
+@dataclass
+class LLMUsage:
     input_tokens: int = 0
     output_tokens: int = 0
     total_tokens: int = 0
 
 
-class LLMResponse(BaseModel):
+@dataclass
+class LLMResponse:
     content: str
     model: str
     provider: str
 
-    usage: LLMUsage = Field(
-        default_factory=LLMUsage
-    )
+    usage: LLMUsage = field(default_factory=LLMUsage)
 
     latency_ms: float = 0.0
     estimated_cost: float = 0.0
     finish_reason: str | None = None
 
-    metadata: dict[str, Any] = Field(
-        default_factory=dict
-    )
+    metadata: dict[str, Any] = field(default_factory=dict)

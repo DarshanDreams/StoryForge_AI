@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from concurrent.futures import ThreadPoolExecutor
 from time import perf_counter
 import uuid
 
@@ -44,6 +45,16 @@ CREATIVE_TASKS = {
     ),
 }
 
+CREATIVE_TOKEN_BUDGETS = {
+    "Plan episode": 650,
+    "Generate scenes": 700,
+    "Generate dialogue": 700,
+    "Validate continuity": 400,
+    "Critique screenplay": 400,
+    "Rewrite weak sections": 750,
+    "Generate video prompt": 700,
+}
+
 
 class CreativeStoryService:
     """Orchestrate creative story actions around retrieved story evidence."""
@@ -64,6 +75,7 @@ class CreativeStoryService:
         limit: int = 5,
         story_id: str = "",
         prompt_version: str = "creative-v1",
+        retrieved_context: list | None = None,
     ) -> dict:
         if action not in CREATIVE_TASKS:
             raise ValueError(f"Unsupported creative action: {action}")
@@ -72,7 +84,11 @@ class CreativeStoryService:
 
         run_id = str(uuid.uuid4())
         started = perf_counter()
-        retrieved = self.retrieve_context(brief, limit=limit)
+        retrieved = (
+            retrieved_context
+            if retrieved_context is not None
+            else self.retrieve_context(brief, limit=limit)
+        )
         context = "\n\n".join(
             f"[Source {index}] {result.chunk.text}"
             for index, result in enumerate(retrieved, start=1)
@@ -104,6 +120,7 @@ class CreativeStoryService:
                     "production-ready text."
                 ),
                 user_prompt=user_prompt,
+                max_tokens=CREATIVE_TOKEN_BUDGETS[action],
             )
 
         structured_output = self._structure_output(action, output)
@@ -120,7 +137,12 @@ class CreativeStoryService:
             "agent_selected": "creative_story_agent",
             "action": action,
             "prompt_version": prompt_version,
-            "model": getattr(self.llm, "model", "unknown"),
+            "model": getattr(
+                self.llm,
+                "last_model",
+                getattr(self.llm, "model", "unknown"),
+            ),
+            "provider": getattr(self.llm, "last_provider", "unknown"),
             "input": brief,
             "retrieval_context": [result.to_dict() for result in retrieved],
             "retrieved_chunks": len(retrieved),
@@ -168,24 +190,53 @@ class CreativeStoryService:
         brief: str,
         story_id: str = "",
         limit: int = 5,
+        on_stage=None,
     ) -> dict:
-        plan = self.run_action("Plan episode", brief, limit=limit, story_id=story_id)
+        def report(stage: str) -> None:
+            if on_stage is not None:
+                on_stage(stage)
+
+        retrieved = self.retrieve_context(brief, limit=limit)
+        report("Creating episode plan")
+        plan = self.run_action(
+            "Plan episode", brief, limit=limit, story_id=story_id,
+            retrieved_context=retrieved,
+        )
+        report("Generating scenes")
         scene = self.run_action(
             "Generate scenes", brief, prior_output=plan["output"],
-            limit=limit, story_id=story_id,
+            limit=limit, story_id=story_id, retrieved_context=retrieved,
         )
+        report("Generating dialogue")
         dialogue = self.run_action(
             "Generate dialogue", brief, prior_output=scene["output"],
-            limit=limit, story_id=story_id,
+            limit=limit, story_id=story_id, retrieved_context=retrieved,
         )
-        continuity = self.run_action(
-            "Validate continuity", brief, prior_output=dialogue["output"],
-            limit=limit, story_id=story_id,
-        )
-        critique = self.run_action(
-            "Critique screenplay", brief, prior_output=dialogue["output"],
-            limit=limit, story_id=story_id,
-        )
+        report("Checking continuity and screenplay quality in parallel")
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            continuity_future = executor.submit(
+                self.run_action,
+                "Validate continuity",
+                brief,
+                dialogue["output"],
+                limit,
+                story_id,
+                "creative-v1",
+                retrieved,
+            )
+            critique_future = executor.submit(
+                self.run_action,
+                "Critique screenplay",
+                brief,
+                dialogue["output"],
+                limit,
+                story_id,
+                "creative-v1",
+                retrieved,
+            )
+            continuity = continuity_future.result()
+            critique = critique_future.result()
+        report("Rewriting from the reviews")
         rewrite = self.run_action(
             "Rewrite weak sections", brief,
             prior_output=(
@@ -193,11 +244,12 @@ class CreativeStoryService:
                 f"CONTINUITY AUDIT:\n{continuity['output']}\n\n"
                 f"CRITIQUE:\n{critique['output']}"
             ),
-            limit=limit, story_id=story_id,
+            limit=limit, story_id=story_id, retrieved_context=retrieved,
         )
+        report("Preparing video prompt")
         video = self.run_action(
             "Generate video prompt", brief, prior_output=rewrite["output"],
-            limit=limit, story_id=story_id,
+            limit=limit, story_id=story_id, retrieved_context=retrieved,
         )
         return {
             "run_id": video["run_id"],

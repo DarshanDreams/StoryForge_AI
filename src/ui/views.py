@@ -144,11 +144,18 @@ def render_creative() -> None:
             st.warning("Enter a creative brief first.")
         else:
             try:
-                with st.spinner("Running creative agent..."):
-                    if run_pipeline:
-                        st.session_state.creative_pipeline = creative_service().run_pipeline(brief, st.session_state.document.document_id, limit)
-                        st.session_state.creative_result = None
-                    else:
+                if run_pipeline:
+                    with st.status("Running the creative workflow...", expanded=True) as status:
+                        st.session_state.creative_pipeline = creative_service().run_pipeline(
+                            brief,
+                            st.session_state.document.document_id,
+                            limit,
+                            on_stage=lambda message: status.update(label=message),
+                        )
+                        status.update(label="Creative workflow complete", state="complete")
+                    st.session_state.creative_result = None
+                else:
+                    with st.spinner("Running creative agent..."):
                         previous = st.session_state.creative_result or {}
                         st.session_state.creative_result = creative_service().run_action(action, brief, previous.get("output", ""), limit, st.session_state.document.document_id)
                         st.session_state.creative_pipeline = None
@@ -180,7 +187,7 @@ def render_creative() -> None:
             display_sources(result.get("retrieval_context", []))
         with st.expander("Prompt and trace metadata"):
             st.code(result.get("prompt", ""))
-            st.json({key: result.get(key) for key in ("run_id", "model", "prompt_version", "timestamp", "tool_calls", "input_tokens", "output_tokens")})
+            st.json({key: result.get(key) for key in ("run_id", "provider", "model", "prompt_version", "timestamp", "tool_calls", "input_tokens", "output_tokens")})
     render_experiment_log()
 
 
