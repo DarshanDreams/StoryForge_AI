@@ -135,6 +135,44 @@ def test_capacity_on_primary_tries_next_openrouter_model():
     assert gateway.last_model == "liquid/lfm-2.5-2.6b:free"
 
 
+def test_empty_primary_response_tries_next_openrouter_model():
+    responses = [
+        FakeResponse(
+            200,
+            {
+                "choices": [
+                    {"message": {"content": None}, "finish_reason": "length"}
+                ]
+            },
+        ),
+        FakeResponse(
+            200,
+            {"choices": [{"message": {"content": "Backup response"}}]},
+        ),
+    ]
+    gateway = LLMGateway(make_settings())
+    gateway.fallback_models = ["qwen/qwen3.8-27b:free"]
+    requested_models = []
+
+    def post(*args, **kwargs):
+        requested_models.append(kwargs["json"]["model"])
+        return next(response_iterator)
+
+    response_iterator = iter(responses)
+    fake_client = FakeClient([])
+    fake_client.post = post
+
+    with patch("src.llm.gateway.httpx.Client", return_value=fake_client):
+        result = gateway.generate("system", "user")
+
+    assert result == "Backup response"
+    assert requested_models == [
+        "test/openrouter-model",
+        "qwen/qwen3.8-27b:free",
+    ]
+    assert gateway.last_model == "qwen/qwen3.8-27b:free"
+
+
 def test_authentication_error_does_not_fall_back():
     responses = [FakeResponse(401, {"error": {"message": "Invalid API key"}})]
     gateway = LLMGateway(make_settings())

@@ -196,9 +196,8 @@ class LLMGateway:
 
         choices = data.get("choices")
         if not choices:
-            raise RuntimeError(
-                f"OpenRouter returned no choices for {model}: "
-                f"{str(data)[:500]}"
+            raise _CapacityError(
+                f"OpenRouter returned no choices: {str(data)[:300]}"
             )
 
         content = choices[0].get("message", {}).get("content")
@@ -209,8 +208,10 @@ class LLMGateway:
                 if isinstance(part, dict)
             )
         if not isinstance(content, str) or not content.strip():
-            raise RuntimeError(
-                f"OpenRouter response from {model} had no message content."
+            finish_reason = choices[0].get("finish_reason", "unknown")
+            raise _CapacityError(
+                f"provider returned no message content "
+                f"(finish_reason={finish_reason})"
             )
 
         self.last_usage = data.get("usage", {}) or {}
