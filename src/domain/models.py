@@ -1,5 +1,5 @@
 import json
-from dataclasses import dataclass, field, fields
+from dataclasses import MISSING, dataclass, field, fields
 from datetime import datetime
 from typing import Any
 
@@ -93,14 +93,23 @@ def _parse_records(
     if not isinstance(records, list):
         raise ValueError(f"Story analysis field '{key}' must be a list.")
 
-    valid_fields = {item.name for item in fields(record_type)}
+    record_fields = fields(record_type)
+    valid_fields = {item.name for item in record_fields}
+    required_fields = {
+        item.name
+        for item in record_fields
+        if item.default is MISSING and item.default_factory is MISSING
+    }
     parsed = []
     for index, record in enumerate(records):
         if not isinstance(record, dict):
-            raise ValueError(
-                f"Story analysis field '{key}' item {index} must be an object."
-            )
+            continue
         values = {name: value for name, value in record.items() if name in valid_fields}
+        if any(
+            name not in values or values[name] is None or values[name] == ""
+            for name in required_fields
+        ):
+            continue
         try:
             parsed.append(record_type(**values))
         except TypeError as exc:

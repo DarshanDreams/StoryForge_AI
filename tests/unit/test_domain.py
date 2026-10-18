@@ -21,3 +21,15 @@ def test_story_analysis_parses_nested_records_without_pydantic():
     assert len(analysis.characters) == 1
     assert isinstance(analysis.characters[0], Character)
     assert analysis.characters[0].role == "unknown"
+
+
+def test_story_analysis_skips_incomplete_relationships():
+    analysis = StoryAnalysis.from_json(
+        '{"story_summary":"A story.","relationships":[{},'
+        '{"from_character":"Mara","to_character":"Ilan",'
+        '"relationship_type":"siblings"}]}'
+    )
+
+    assert len(analysis.relationships) == 1
+    assert analysis.relationships[0].from_character == "Mara"
+    assert analysis.relationships[0].relationship_type == "siblings"
